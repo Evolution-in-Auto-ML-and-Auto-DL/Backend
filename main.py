@@ -8,6 +8,7 @@ from sqlalchemy import Table, Column, Integer, String, MetaData
 
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
+DATASET_STORAGE_PATH = "/home/athena/Desktop/ATHENA/STORAGE/DATASETS"
 
 app = FastAPI()
 
@@ -32,7 +33,7 @@ def upload_dataset(file: UploadFile):
         contents = file.file.read()
         print(file.content_type)
         if file.content_type in accepted_mimes :
-            with open(file.filename, 'wb') as f:
+            with open(DATASET_STORAGE_PATH+"/"+file.filename, 'wb') as f:
                 f.write(contents)
         else:
             print("Wrong Format")
@@ -69,4 +70,4 @@ if __name__ == "__main__":
 
     meta.create_all(engine)
 
-    uvicorn.run(app)
+    uvicorn.run(app, host="194.195.119.85")
