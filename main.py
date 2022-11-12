@@ -1,6 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, Form
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Any
 import uvicorn
 import databases
 from sqlalchemy import create_engine,select
@@ -47,10 +48,21 @@ async def startup():
 async def shutdown():
     await database.disconnect()
 
-@app.post("/knockdown")
-def knockdown(values:Project):
-    print(values)
-    return values
+@app.post("/upload_dataset_details")
+async def knockdown(values:Project):
+    # query = 'INSERT INTO projects(name, description, location) VALUES(:name, :description, :dataset)'
+    # values = [
+    #     {
+    #         "name": values.name,
+    #         "description": values.description,
+    #         "dataset": values.dataset
+    #     }
+    # ]
+    # await database.execute(query=query, values=values)
+
+    ins = projects.insert().values(name=values.name,description=values.description,location=values.dataset)
+    last_record_id = await database.execute(ins)
+    return {**values.dict(), "id": last_record_id}
 
 @app.post("/upload_dataset")
 def upload_dataset(file: UploadFile):
@@ -90,8 +102,10 @@ if __name__ == "__main__":
     
     projects = Table(
     'projects', meta, 
-    Column('id', Integer, primary_key = True), 
-    Column('name', String), 
+        Column('id', Integer, primary_key = True), 
+        Column('name', String),
+        Column('description', String),
+        Column('location', String) 
     )
 
     meta.create_all(engine)
