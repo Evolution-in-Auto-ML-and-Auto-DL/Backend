@@ -1,20 +1,29 @@
 from fastapi import FastAPI, File, UploadFile
 import uvicorn
-from sqlalchemy import create_engine
+import databases
+from sqlalchemy import create_engine,select
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import Table, Column, Integer, String, MetaData
 
 
-
-SQLALCHEMY_DATABASE_URL = "postgresql://postgres:mbQwF71Wz3GkDNNP@db.rnitzjdeuuqtgkbjuxzp.supabase.co:5432/postgres"
+SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
 
 app = FastAPI()
+
+database = databases.Database(SQLALCHEMY_DATABASE_URL)
 
 @app.get("/")
 async def read_root():
     return {"message": "Server is running"}
 
+@app.on_event("startup")
+async def startup():
+    await database.connect()
+
+@app.on_event("shutdown")
+async def shutdown():
+    await database.disconnect()
 
 @app.post("/upload_dataset")
 def upload_dataset(file: UploadFile):
@@ -36,8 +45,9 @@ def upload_dataset(file: UploadFile):
 
 
 @app.get("/projects")
-def fetch_projects():
-    return Base.metadata
+async def fetch_projects():
+    query = projects.select()
+    return await database.fetch_all(query)
 
 
 if __name__ == "__main__":
