@@ -1,9 +1,13 @@
-from fastapi import FastAPI, File, UploadFile, Form
-from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Any
+
+from fastapi import FastAPI, File, UploadFile, Form
+from fastapi.middleware.cors import CORSMiddleware
+
 import uvicorn
+
 import databases
+
 from sqlalchemy import create_engine,select
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
@@ -50,19 +54,8 @@ async def shutdown():
 
 @app.post("/upload_dataset_details")
 async def knockdown(values:Project):
-    # query = 'INSERT INTO projects(name, description, location) VALUES(:name, :description, :dataset)'
-    # values = [
-    #     {
-    #         "name": values.name,
-    #         "description": values.description,
-    #         "dataset": values.dataset
-    #     }
-    # ]
-    # await database.execute(query=query, values=values)
-
-    ins = projects.insert().values(name=values.name,description=values.description,location=values.dataset)
+    ins = projects.insert().values(name=values.name,description=values.description,location=DATASET_STORAGE_PATH+'/'+values.dataset)
     last_record_id = await database.execute(ins)
-    return {**values.dict(), "id": last_record_id}
 
 @app.post("/upload_dataset")
 def upload_dataset(file: UploadFile):
