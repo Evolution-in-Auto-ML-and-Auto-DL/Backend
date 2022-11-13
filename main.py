@@ -81,6 +81,12 @@ async def fetch_projects():
     query = projects.select()
     return await database.fetch_all(query)
 
+@app.get("/project/{id}")
+async def get_project_meta(id: int):
+    # query = projects.select(id=id)
+    query = "SELECT * FROM projects WHERE id = :id"
+    return await database.fetch_one(query=query, values={"id":id})
+
 
 if __name__ == "__main__":
     meta = MetaData()
