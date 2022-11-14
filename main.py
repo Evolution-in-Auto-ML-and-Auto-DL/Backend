@@ -13,6 +13,13 @@ from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy import Table, Column, Integer, String, MetaData
 
+import pandas as pd
+
+import evalml
+from evalml import AutoMLSearch
+
+import pickle
+
 
 SQLALCHEMY_DATABASE_URL = "sqlite:///./sql_app.db"
 DATASET_STORAGE_PATH = "/home/athena/Desktop/ATHENA/STORAGE/DATASETS"
@@ -86,6 +93,158 @@ async def get_project_meta(id: int):
     # query = projects.select(id=id)
     query = "SELECT * FROM projects WHERE id = :id"
     return await database.fetch_one(query=query, values={"id":id})
+
+############################################# CLEANING ##############################################
+
+class CleaningData(BaseModel):
+    url: str
+
+@app.post("/cleaning_info")
+async def getCleaning(data: CleaningData):
+    loc = data.url
+    data = pd.read_csv(loc)
+    cat = []
+    num = []
+    for i in data.columns:
+        if data[i].dtype == 'object':
+            cat.append(i)
+        else:
+            num.append(i)
+
+    return [cat,num]
+
+class CleanMethod(BaseModel):
+    url: str
+    tags: list = []
+
+@app.post("/cleaning")
+async def getCleaning(data: CleanMethod):
+    loc = data.url
+    tags = data.tags
+
+    data = pd.read_csv(loc)
+
+    print(data.isnull().values.any())
+
+    def statistics(series,method):
+        if method == 'mode':
+            mode = series.value_counts().index[0]
+            return (mode)
+        elif method == 'mean':
+            return series.mean()
+        else:
+            return series.median()
+
+    for col, method in tags:
+        if method == 'mean' or method == 'mode' or method == 'median':
+            stat = statistics(data[col], method)
+            data[col].fillna(stat, inplace=True)
+        else:
+            data[col].fillna(method=method, inplace=True)
+
+    print(data.isnull().values.any())
+
+    data.to_csv(loc, header=True, index=False)
+
+    return {"it":"worked"}
+
+
+############################################## MODEL BUILDING ##########################################
+
+class ModelData(BaseModel):
+    url: str
+    y: str
+
+
+@app.post("/evalml_info")
+async def getModel(data: ModelData):
+    loc = data.url
+    y = data.y
+
+    data = pd.read_csv(loc)
+
+    X = data.drop(y, axis=1)
+    y = data[y]
+
+    X_train, X_test, y_train, y_test = evalml.preprocessing.split_data(X, y, problem_type="regression")
+
+    automl = evalml.automl.AutoMLSearch(X_train=X_train,y_train= y_train, problem_type="regression")
+    automl.search()
+
+    pipelines = automl.rankings.pipeline_name[:10]
+    temp = (list(pipelines.values))
+
+    return temp
+
+@app.post("/evalml_run")
+async def saveModel(data: ModelData):
+    loc = data.url
+    y = data.y
+
+    data = pd.read_csv(loc)
+
+    X = data.drop(y, axis=1)
+    y = data[y]
+
+    X_train, X_test, y_train, y_test = evalml.preprocessing.split_data(X, y, problem_type="regression")
+
+    automl = evalml.automl.AutoMLSearch(X_train=X_train,y_train= y_train, problem_type="regression")
+    automl.search()
+
+    best = automl.best_pipeline
+
+    best.save("/home/athena/Desktop/ATHENA/STORAGE/CurrentModel/model.pkl")
+
+    return {"saved":"model"}
+
+######################## Error Metrics ######################
+
+class ErrorData(BaseModel):
+    url: str
+    y: str
+    metrics: list
+
+@app.get("/fetch_error_metrics")
+async def error():
+    return ['Mean Squared Error', 'Root Mean squared errow', 'Mean Absolute Error', 'R-Squared']
+        
+@app.post("/error_metrics")
+async def error(data: ErrorData):
+    metrics = data.metrics
+
+    loc = data.url
+
+    y = data.y
+
+    print(metrics)
+
+    convert = {'Mean Squared Error':'mse', 'Root Mean squared errow':'root mean squared log error', 'Mean Absolute Error':'mae', 'R-Squared':'r2'}
+
+    metrics = [convert[x] for x in metrics]
+
+    model = evalml.automl.AutoMLSearch.load("/home/athena/Desktop/ATHENA/STORAGE/CurrentModel/model.pkl")
+
+    data = pd.read_csv(loc)
+
+    X = data.drop(y, axis=1)
+    y = data[y]
+
+    X_train, X_test, y_train, y_test = evalml.preprocessing.split_data(X, y, problem_type="regression")
+
+    result = model.score(X_test, y_test, objectives=metrics)
+
+    with open('/home/athena/Desktop/ATHENA/STORAGE/CurrentModel/reports', 'wb') as fp:
+        pickle.dump(result, fp)
+    
+    return {"status":"success"}
+
+############################################ Reports #########################################
+
+@app.get("/reports")
+async def error():
+    with open('/home/athena/Desktop/ATHENA/STORAGE/CurrentModel/reports', 'rb') as fp:
+        result = pickle.load(fp)
+    return result
 
 
 if __name__ == "__main__":
