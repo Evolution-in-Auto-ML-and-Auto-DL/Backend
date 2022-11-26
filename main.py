@@ -61,8 +61,14 @@ async def shutdown():
 
 @app.post("/upload_dataset_details")
 async def knockdown(values:Project):
-    ins = projects.insert().values(name=values.name,description=values.description,location=DATASET_STORAGE_PATH+'/'+values.dataset)
-    last_record_id = await database.execute(ins)
+    # ins = projects.insert().values(name=values.name,description=values.description,location=DATASET_STORAGE_PATH+'/'+values.dataset)
+    query = "INSERT INTO projects(name,description,location) VALUES (:name, :description, :location)"
+    values = {
+        "name": values.name,
+        "description": values.description,
+        "location": str(DATASET_STORAGE_PATH+'/'+values.dataset)
+    }
+    last_record_id = await database.execute(query=query,values=values)
 
 @app.post("/upload_dataset")
 def upload_dataset(file: UploadFile):
