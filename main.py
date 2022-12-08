@@ -17,6 +17,8 @@ import pandas as pd
 
 import evalml
 from evalml import AutoMLSearch
+from evalml.problem_types import detect_problem_type
+from evalml.objectives import get_optimization_objectives
 
 import pickle
 
@@ -27,7 +29,7 @@ DATASET_STORAGE_PATH = "/home/athena/Desktop/ATHENA/STORAGE/DATASETS"
 origins = [
     "http://localhost",
     "http://localhost:3000",
-    "http://194.195.119.85:3000",
+    "http://172.105.63.82:3000",
 ]
 
 app = FastAPI()
@@ -112,10 +114,11 @@ async def getCleaning(data: CleaningData):
     cat = []
     num = []
     for i in data.columns:
-        if data[i].dtype == 'object':
-            cat.append(i)
-        else:
-            num.append(i)
+        if data[i].isnull().values.any():
+            if data[i].dtype == 'object':
+                cat.append(i)
+            else:
+                num.append(i)
 
     return [cat,num]
 
@@ -129,8 +132,6 @@ async def getCleaning(data: CleanMethod):
     tags = data.tags
 
     data = pd.read_csv(loc)
-
-    print(data.isnull().values.any())
 
     def statistics(series,method):
         if method == 'mode':
@@ -148,8 +149,6 @@ async def getCleaning(data: CleanMethod):
         else:
             data[col].fillna(method=method, inplace=True)
 
-    print(data.isnull().values.any())
-
     data.to_csv(loc, header=True, index=False)
 
     return {"it":"worked"}
@@ -165,16 +164,19 @@ class ModelData(BaseModel):
 @app.post("/evalml_info")
 async def getModel(data: ModelData):
     loc = data.url
-    y = data.y
 
     data = pd.read_csv(loc)
+
+    y = data.columns[-1]
 
     X = data.drop(y, axis=1)
     y = data[y]
 
-    X_train, X_test, y_train, y_test = evalml.preprocessing.split_data(X, y, problem_type="regression")
+    task = detect_problem_type(y)
 
-    automl = evalml.automl.AutoMLSearch(X_train=X_train,y_train= y_train, problem_type="regression")
+    X_train, X_test, y_train, y_test = evalml.preprocessing.split_data(X, y, problem_type=task)
+
+    automl = evalml.automl.AutoMLSearch(X_train=X_train,y_train= y_train, problem_type=task)
     automl.search()
 
     pipelines = automl.rankings.pipeline_name[:10]
@@ -185,16 +187,19 @@ async def getModel(data: ModelData):
 @app.post("/evalml_run")
 async def saveModel(data: ModelData):
     loc = data.url
-    y = data.y
 
     data = pd.read_csv(loc)
+
+    y = data.columns[-1]
 
     X = data.drop(y, axis=1)
     y = data[y]
 
-    X_train, X_test, y_train, y_test = evalml.preprocessing.split_data(X, y, problem_type="regression")
+    task = detect_problem_type(y)
 
-    automl = evalml.automl.AutoMLSearch(X_train=X_train,y_train= y_train, problem_type="regression")
+    X_train, X_test, y_train, y_test = evalml.preprocessing.split_data(X, y, problem_type=task)
+
+    automl = evalml.automl.AutoMLSearch(X_train=X_train,y_train= y_train, problem_type=task)
     automl.search()
 
     best = automl.best_pipeline
@@ -210,9 +215,27 @@ class ErrorData(BaseModel):
     y: str
     metrics: list
 
-@app.get("/fetch_error_metrics")
-async def error():
-    return ['Mean Squared Error', 'Root Mean squared errow', 'Mean Absolute Error', 'R-Squared']
+class ErrorDataInput(BaseModel):
+    url: str
+
+@app.post("/fetch_error_metrics")
+async def error(data: ErrorDataInput):
+    loc = data.url
+    data = pd.read_csv(loc)
+
+    y = data.columns[-1]
+
+    X = data.drop(y, axis=1)
+    y = data[y]
+
+    task = detect_problem_type(y)
+
+    result = []
+    
+    for objective in get_optimization_objectives(task):
+        result.append(objective.name)
+
+    return result
         
 @app.post("/error_metrics")
 async def error(data: ErrorData):
@@ -220,17 +243,11 @@ async def error(data: ErrorData):
 
     loc = data.url
 
-    y = data.y
-
-    print(metrics)
-
-    convert = {'Mean Squared Error':'mse', 'Root Mean squared errow':'root mean squared log error', 'Mean Absolute Error':'mae', 'R-Squared':'r2'}
-
-    metrics = [convert[x] for x in metrics]
-
     model = evalml.automl.AutoMLSearch.load("/home/athena/Desktop/ATHENA/STORAGE/CurrentModel/model.pkl")
 
     data = pd.read_csv(loc)
+
+    y = data.columns[-1]
 
     X = data.drop(y, axis=1)
     y = data[y]
@@ -274,4 +291,4 @@ if __name__ == "__main__":
 
     meta.create_all(engine)
 
-    uvicorn.run(app, host="194.195.119.85")
+    uvicorn.run(app, host="172.105.63.82")
